@@ -11,41 +11,43 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mediocregopher/radix/v3"
-
-	"github.com/stickermule/rump/pkg/file"
-	"github.com/stickermule/rump/pkg/message"
-	"github.com/stickermule/rump/pkg/redis"
+	"github.com/domwong/rump/pkg/file"
+	"github.com/domwong/rump/pkg/message"
+	"github.com/domwong/rump/pkg/redis"
+	rredis "github.com/go-redis/redis/v8"
 )
 
-var db1 *radix.Pool
-var db2 *radix.Pool
+var db1 *rredis.Client
+var db2 *rredis.Client
 var ch message.Bus
 var expected map[string]string
 var path string
-var ctx context.Context
 
 func setup() {
-	db1, _ = radix.NewPool("tcp", "redis://redis:6379/5", 1)
-	db2, _ = radix.NewPool("tcp", "redis://redis:6379/6", 1)
+	opts, _ := rredis.ParseURL("redis://localhost:6379/3")
+	db1 = rredis.NewClient(opts)
+	opts, _ = rredis.ParseURL("redis://localhost:6379/4")
+	db2 = rredis.NewClient(opts)
 	ch = make(message.Bus, 100)
 	expected = make(map[string]string)
-	path = "/app/dump.rump"
-	ctx = context.Background()
+
+	path = os.Getenv("TMPDIR") + "/dump.rump"
+	ctx := context.Background()
 
 	// generate source test data
 	for i := 1; i <= 20; i++ {
 		k := fmt.Sprintf("key%v", i)
 		v := fmt.Sprintf("value%v", i)
-		db1.Do(radix.Cmd(nil, "SET", k, v))
+		db1.Set(ctx, k, v, 0)
 		expected[k] = v
 	}
 }
 
 func teardown() {
 	// Reset test dbs
-	db1.Do(radix.Cmd(nil, "FLUSHDB"))
-	db2.Do(radix.Cmd(nil, "FLUSHDB"))
+	ctx := context.Background()
+	db1.FlushDB(ctx)
+	db2.FlushDB(ctx)
 	// Delete dump file
 	os.Remove(path)
 }
@@ -58,6 +60,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestWriteRead(t *testing.T) {
+	ctx:=context.Background()
 	// Read all keys from db1, push to shared message bus
 	source := redis.New(db1, ch, false, false)
 	if err := source.Read(ctx); err != nil {
@@ -70,6 +73,7 @@ func TestWriteRead(t *testing.T) {
 		t.Error("error: ", err)
 	}
 
+	ctx = context.Background()
 	// Create second channel to test reading from file
 	ch2 := make(message.Bus, 100)
 
@@ -87,10 +91,13 @@ func TestWriteRead(t *testing.T) {
 
 	// Get all db2 keys
 	result := map[string]string{}
-	var v string
 	for k := range expected {
-		db2.Do(radix.Cmd(&v, "GET", k))
-		result[k] = v
+		res, err:=db2.Get(ctx, k).Result()
+		if err!=nil {
+
+			t.Errorf("Error getting for key %s %s", k, err)
+		}
+		result[k] = res
 	}
 
 	// Compare db1 keys with db2 keys

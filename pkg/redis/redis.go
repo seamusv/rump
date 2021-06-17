@@ -3,27 +3,30 @@ package redis
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"strconv"
+	"time"
 
-	"github.com/mediocregopher/radix/v3"
-
-	"github.com/stickermule/rump/pkg/message"
+	"github.com/domwong/rump/pkg/message"
+	"github.com/go-redis/redis/v8"
 )
 
 // Redis holds references to a DB pool and a shared message bus.
 // Silent disables verbose mode.
 // TTL enables TTL sync.
 type Redis struct {
-	Pool   *radix.Pool
+	client *redis.Client
+	//Pool   *radix.Pool
 	Bus    message.Bus
 	Silent bool
 	TTL    bool
 }
 
 // New creates the Redis struct, used to read/write.
-func New(source *radix.Pool, bus message.Bus, silent, ttl bool) *Redis {
+func New(source *redis.Client, bus message.Bus, silent, ttl bool) *Redis {
 	return &Redis{
-		Pool:   source,
+		client: source,
 		Bus:    bus,
 		Silent: silent,
 		TTL:    ttl,
@@ -48,14 +51,14 @@ func (r *Redis) maybeTTL(key string) (string, error) {
 	var ttl string
 
 	// Try getting key TTL.
-	err := r.Pool.Do(radix.Cmd(&ttl, "PTTL", key))
-	if err != nil {
+	res, err := r.client.PTTL(context.Background(), key).Result()
+	if err != nil && err != redis.Nil {
 		return ttl, err
 	}
 
 	// When key has no expire PTTL returns "-1".
 	// We set it to 0, default for no expiration time.
-	if ttl == "-1" {
+	if res == time.Duration(-1) {
 		ttl = "0"
 	}
 
@@ -69,36 +72,45 @@ func (r *Redis) maybeTTL(key string) (string, error) {
 func (r *Redis) Read(ctx context.Context) error {
 	defer close(r.Bus)
 
-	scanner := radix.NewScanner(r.Pool, radix.ScanAllKeys)
+	var cursor uint64 = 0
 
-	var key string
-	var value string
 	var ttl string
 
 	// Scan and push to bus until no keys are left.
 	// If context Done, exit early.
-	for scanner.Next(&key) {
-		err := r.Pool.Do(radix.Cmd(&value, "DUMP", key))
-		if err != nil {
+	for {
+		var keys []string
+		var err error
+		keys, cursor, err = r.client.Scan(ctx, cursor, "", 50).Result()
+		if err != nil && err!= redis.Nil{
 			return err
 		}
+		for _, key := range keys {
+			value, err := r.client.Dump(ctx, key).Bytes()
+			if err != nil {
+				return err
+			}
 
-		ttl, err = r.maybeTTL(key)
-		if err != nil {
-			return err
+			ttl, err = r.maybeTTL(key)
+			if err != nil {
+				return err
+			}
+			select {
+			case <-ctx.Done():
+				fmt.Println("")
+				fmt.Println("redis read: exit")
+				return ctx.Err()
+			case r.Bus <- message.Payload{Key: key, Value: base64.StdEncoding.EncodeToString(value), TTL: ttl}:
+				r.maybeLog("r")
+			}
+
 		}
-
-		select {
-		case <-ctx.Done():
-			fmt.Println("")
-			fmt.Println("redis read: exit")
-			return ctx.Err()
-		case r.Bus <- message.Payload{Key: key, Value: value, TTL: ttl}:
-			r.maybeLog("r")
+		if cursor == 0 {
+			return nil
 		}
 	}
 
-	return scanner.Close()
+	return nil
 }
 
 // Write restores keys on the db as they come on the message bus.
@@ -118,8 +130,15 @@ func (r *Redis) Write(ctx context.Context) error {
 				r.Bus = nil
 				continue
 			}
-			err := r.Pool.Do(radix.Cmd(nil, "RESTORE", p.Key, p.TTL, p.Value, "REPLACE"))
-			if err != nil {
+			ttl, _ := strconv.Atoi(p.TTL)
+			if ttl < 0 {
+				ttl = 0
+			}
+			b,err:= base64.StdEncoding.DecodeString(p.Value)
+			if err!= nil {
+				return err
+			}
+			if err := r.client.RestoreReplace(ctx, p.Key, time.Duration(ttl)*time.Millisecond, string(b)).Err(); err != nil {
 				return err
 			}
 			r.maybeLog("w")

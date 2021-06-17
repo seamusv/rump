@@ -14,39 +14,40 @@
 package run_test
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"time"
 
-	"github.com/mediocregopher/radix/v3"
-
-	"github.com/stickermule/rump/pkg/config"
-	"github.com/stickermule/rump/pkg/run"
+	"github.com/domwong/rump/pkg/config"
+	"github.com/domwong/rump/pkg/run"
+	"github.com/go-redis/redis/v8"
 )
 
-var db1 *radix.Pool
-var db2 *radix.Pool
-var path string
+var db1 *redis.Client
+var db2 *redis.Client
 
 func setup() {
-	db1, _ = radix.NewPool("tcp", "redis://redis:6379/9", 1)
-	db2, _ = radix.NewPool("tcp", "redis://redis:6379/10", 1)
-	path = "/app/dump.rump"
+	opts, _ := redis.ParseURL("redis://localhost:6379/9")
+	db1 = redis.NewClient(opts)
+	opts, _ = redis.ParseURL("redis://localhost:6379/10")
+	db2 = redis.NewClient(opts)
 
+	ctx := context.Background()
 	// generate source test data on db1
 	for i := 1; i <= 1; i++ {
 		k := fmt.Sprintf("key%v", i)
 		v := fmt.Sprintf("value%v", i)
-		db1.Do(radix.Cmd(nil, "SET", k, v))
-		db1.Do(radix.Cmd(nil, "PEXPIRE", k, "10000"))
+		db1.Set(ctx, k, v, 10000*time.Millisecond)
 	}
 }
 
 func teardown() {
 	// Reset test dbs
-	db1.Do(radix.Cmd(nil, "FLUSHDB"))
-	db2.Do(radix.Cmd(nil, "FLUSHDB"))
-	// Delete dump file
-	os.Remove(path)
+	ctx := context.Background()
+	db1.FlushDB(ctx)
+	db2.FlushDB(ctx)
+
 }
 
 func ExampleRun_redisToRedis() {
@@ -55,11 +56,11 @@ func ExampleRun_redisToRedis() {
 
 	cfg := config.Config{
 		Source: config.Resource{
-			URI:     "redis://redis:6379/9",
+			URI:     "redis://localhost:6379/9",
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     "redis://redis:6379/10",
+			URI:     "redis://localhost:6379/10",
 			IsRedis: true,
 		},
 		Silent: false,
@@ -78,11 +79,11 @@ func ExampleRun_redisToRedisTTL() {
 
 	cfg := config.Config{
 		Source: config.Resource{
-			URI:     "redis://redis:6379/9",
+			URI:     "redis://localhost:6379/9",
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     "redis://redis:6379/10",
+			URI:     "redis://localhost:6379/10",
 			IsRedis: true,
 		},
 		Silent: false,
@@ -102,11 +103,11 @@ func ExampleRun_redisToRedisSilent() {
 
 	cfg := config.Config{
 		Source: config.Resource{
-			URI:     "redis://redis:6379/9",
+			URI:     "redis://localhost:6379/9",
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     "redis://redis:6379/10",
+			URI:     "redis://localhost:6379/10",
 			IsRedis: true,
 		},
 		Silent: true,
@@ -124,11 +125,11 @@ func ExampleRun_redisToFile() {
 
 	cfg := config.Config{
 		Source: config.Resource{
-			URI:     "redis://redis:6379/9",
+			URI:     "redis://localhost:6379/9",
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     "/app/dump.rump",
+			URI:     os.TempDir()+"/dump.rump",
 			IsRedis: false,
 		},
 	}
@@ -146,11 +147,11 @@ func ExampleRun_redisToFileTTL() {
 
 	cfg := config.Config{
 		Source: config.Resource{
-			URI:     "redis://redis:6379/9",
+			URI:     "redis://localhost:6379/9",
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     "/app/dump.rump",
+			URI:     os.TempDir()+"/dump.rump",
 			IsRedis: false,
 		},
 		TTL: true,
@@ -169,11 +170,11 @@ func ExampleRun_fileToRedis() {
 
 	cfgFileDump := config.Config{
 		Source: config.Resource{
-			URI:     "redis://redis:6379/9",
+			URI:     "redis://localhost:6379/9",
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     "/app/dump.rump",
+			URI:     os.TempDir()+"/dump.rump",
 			IsRedis: false,
 		},
 	}
@@ -181,11 +182,11 @@ func ExampleRun_fileToRedis() {
 
 	cfg := config.Config{
 		Source: config.Resource{
-			URI:     "/app/dump.rump",
+			URI:     os.TempDir()+"/dump.rump",
 			IsRedis: false,
 		},
 		Target: config.Resource{
-			URI:     "redis://redis:6379/10",
+			URI:     "redis://localhost:6379/10",
 			IsRedis: true,
 		},
 	}
@@ -205,11 +206,11 @@ func ExampleRun_fileToRedisTTL() {
 
 	cfgFileDump := config.Config{
 		Source: config.Resource{
-			URI:     "redis://redis:6379/9",
+			URI:     "redis://localhost:6379/9",
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     "/app/dump.rump",
+			URI:     os.TempDir()+"/dump.rump",
 			IsRedis: false,
 		},
 	}
@@ -217,11 +218,11 @@ func ExampleRun_fileToRedisTTL() {
 
 	cfg := config.Config{
 		Source: config.Resource{
-			URI:     "/app/dump.rump",
+			URI:     os.TempDir()+"/dump.rump",
 			IsRedis: false,
 		},
 		Target: config.Resource{
-			URI:     "redis://redis:6379/10",
+			URI:     "redis://localhost:6379/10",
 			IsRedis: true,
 		},
 		TTL: true,

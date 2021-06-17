@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mediocregopher/radix/v3"
+	rredis "github.com/go-redis/redis/v8"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/stickermule/rump/pkg/config"
-	"github.com/stickermule/rump/pkg/file"
-	"github.com/stickermule/rump/pkg/message"
-	"github.com/stickermule/rump/pkg/redis"
-	"github.com/stickermule/rump/pkg/signal"
+	"github.com/domwong/rump/pkg/config"
+	"github.com/domwong/rump/pkg/file"
+	"github.com/domwong/rump/pkg/message"
+	"github.com/domwong/rump/pkg/redis"
+	"github.com/domwong/rump/pkg/signal"
 )
 
 // Exit helper
@@ -38,12 +38,14 @@ func Run(cfg config.Config) {
 
 	// Create and run either a Redis or File Source reader.
 	if cfg.Source.IsRedis {
-		db, err := radix.NewPool("tcp", cfg.Source.URI, 1)
+		opts, err := rredis.ParseURL(cfg.Source.URI)
 		if err != nil {
 			exit(err)
 		}
 
-		source := redis.New(db, ch, cfg.Silent, cfg.TTL)
+		c := rredis.NewClient(opts)
+
+		source := redis.New(c, ch, cfg.Silent, cfg.TTL)
 
 		g.Go(func() error {
 			return source.Read(gctx)
@@ -58,12 +60,14 @@ func Run(cfg config.Config) {
 
 	// Create and run either a Redis or File Target writer.
 	if cfg.Target.IsRedis {
-		db, err := radix.NewPool("tcp", cfg.Target.URI, 1)
+		opts, err := rredis.ParseURL(cfg.Target.URI)
 		if err != nil {
 			exit(err)
 		}
 
-		target := redis.New(db, ch, cfg.Silent, cfg.TTL)
+		c := rredis.NewClient(opts)
+
+		target := redis.New(c, ch, cfg.Silent, cfg.TTL)
 
 		g.Go(func() error {
 			defer cancel()

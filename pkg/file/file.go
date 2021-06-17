@@ -6,10 +6,12 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"unicode"
 
-	"github.com/stickermule/rump/pkg/message"
+	"github.com/domwong/rump/pkg/message"
 )
 
 // File can read and write, to a file Path, using the message Bus.
@@ -64,34 +66,67 @@ func (f *File) Read(ctx context.Context) error {
 		return err
 	}
 	defer d.Close()
-
-	// Scan file, split by double-cross separator
-	scanner := bufio.NewScanner(d)
-	scanner.Split(splitCross)
+	rdr:= bufio.NewReader(d)
 
 	// Scan line by line
 	// file protocol is key✝✝value✝✝ttl✝✝
-	for scanner.Scan() {
-		// Get key
-		key := scanner.Text()
-		// trigger next scan to get value
-		scanner.Scan()
-		value := scanner.Text()
-		// trigger next scan to get ttl
-		scanner.Scan()
-		ttl := scanner.Text()
+	for  {
+
+		scan:=func () (string, error){
+			var currentBuf string
+			lastRead:=false
+			for {
+				r, _, err:=rdr.ReadRune()
+				if r == unicode.ReplacementChar {
+					fmt.Println("discard")
+					continue
+				}
+				if err!=nil {
+					return "", err
+				}
+				if lastRead && r=='✝' {
+					break
+				}
+				if r == '✝' {
+					lastRead =true
+				} else{
+					lastRead = false
+				}
+
+				currentBuf += string(r)
+				if len(currentBuf)%100 == 0 {
+					fmt.Printf(".")
+				}
+			}
+			// length of ✝ is 3 so take that off
+			return currentBuf[:len(currentBuf)-3], nil
+		}
+
+		key, err:= scan()
+		fmt.Printf("Key %s\n", key)
+		if err!=nil {
+			if err==io.EOF {
+				break
+			}
+			return err
+		}
+		value, err:=scan()
+		if err!=nil {
+			return err
+		}
+		ttl, err:=scan()
+		if err!=nil {
+			return err
+		}
+
 		select {
 		case <-ctx.Done():
 			fmt.Println("")
-			fmt.Println("file read: exit")
+			fmt.Println("file read: exit "+ctx.Err().Error())
 			return ctx.Err()
 		case f.Bus <- message.Payload{Key: key, Value: value, TTL: ttl}:
 			f.maybeLog("r")
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return err
 	}
 
 	return nil

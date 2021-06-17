@@ -48,11 +48,11 @@ func validate(from, to string, silent, ttl bool) (Config, error) {
 		TTL:    ttl,
 	}
 
-	if strings.HasPrefix(from, "redis://") {
+	if strings.HasPrefix(from, "redis://") || strings.HasPrefix(from, "rediss://") {
 		cfg.Source.IsRedis = true
 	}
 
-	if strings.HasPrefix(to, "redis://") {
+	if strings.HasPrefix(to, "redis://") || strings.HasPrefix(to, "rediss://") {
 		cfg.Target.IsRedis = true
 	}
 
