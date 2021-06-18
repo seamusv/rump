@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	rredis "github.com/go-redis/redis/v8"
 	"golang.org/x/sync/errgroup"
@@ -42,6 +43,7 @@ func Run(cfg config.Config) {
 		if err != nil {
 			exit(err)
 		}
+		opts.ReadTimeout = 60 * time.Second
 
 		c := rredis.NewClient(opts)
 

@@ -3,7 +3,6 @@ package redis
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"strconv"
 	"time"
@@ -81,14 +80,16 @@ func (r *Redis) Read(ctx context.Context) error {
 	for {
 		var keys []string
 		var err error
-		keys, cursor, err = r.client.Scan(ctx, cursor, "", 50).Result()
-		if err != nil && err!= redis.Nil{
+		keys, cursor, err = r.client.Scan(ctx, cursor, "", 400).Result()
+		if err != nil && err != redis.Nil {
 			return err
 		}
 		for _, key := range keys {
-			value, err := r.client.Dump(ctx, key).Bytes()
+			start := time.Now()
+			value, err := r.client.Dump(ctx, key).Result()
 			if err != nil {
-				return err
+				fmt.Printf("key %s with error %s after %s\n", key, err, time.Since(start))
+				continue
 			}
 
 			ttl, err = r.maybeTTL(key)
@@ -100,7 +101,7 @@ func (r *Redis) Read(ctx context.Context) error {
 				fmt.Println("")
 				fmt.Println("redis read: exit")
 				return ctx.Err()
-			case r.Bus <- message.Payload{Key: key, Value: base64.StdEncoding.EncodeToString(value), TTL: ttl}:
+			case r.Bus <- message.Payload{Key: key, Value: value, TTL: ttl}:
 				r.maybeLog("r")
 			}
 
@@ -134,11 +135,7 @@ func (r *Redis) Write(ctx context.Context) error {
 			if ttl < 0 {
 				ttl = 0
 			}
-			b,err:= base64.StdEncoding.DecodeString(p.Value)
-			if err!= nil {
-				return err
-			}
-			if err := r.client.RestoreReplace(ctx, p.Key, time.Duration(ttl)*time.Millisecond, string(b)).Err(); err != nil {
+			if err := r.client.RestoreReplace(ctx, p.Key, time.Duration(ttl)*time.Millisecond, p.Value).Err(); err != nil {
 				return err
 			}
 			r.maybeLog("w")

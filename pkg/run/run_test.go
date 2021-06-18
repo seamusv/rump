@@ -129,7 +129,7 @@ func ExampleRun_redisToFile() {
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     os.TempDir()+"/dump.rump",
+			URI:     os.TempDir() + "/dump.rump",
 			IsRedis: false,
 		},
 	}
@@ -151,7 +151,7 @@ func ExampleRun_redisToFileTTL() {
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     os.TempDir()+"/dump.rump",
+			URI:     os.TempDir() + "/dump.rump",
 			IsRedis: false,
 		},
 		TTL: true,
@@ -174,7 +174,7 @@ func ExampleRun_fileToRedis() {
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     os.TempDir()+"/dump.rump",
+			URI:     os.TempDir() + "/dump.rump",
 			IsRedis: false,
 		},
 	}
@@ -182,7 +182,7 @@ func ExampleRun_fileToRedis() {
 
 	cfg := config.Config{
 		Source: config.Resource{
-			URI:     os.TempDir()+"/dump.rump",
+			URI:     os.TempDir() + "/dump.rump",
 			IsRedis: false,
 		},
 		Target: config.Resource{
@@ -210,7 +210,7 @@ func ExampleRun_fileToRedisTTL() {
 			IsRedis: true,
 		},
 		Target: config.Resource{
-			URI:     os.TempDir()+"/dump.rump",
+			URI:     os.TempDir() + "/dump.rump",
 			IsRedis: false,
 		},
 	}
@@ -218,7 +218,7 @@ func ExampleRun_fileToRedisTTL() {
 
 	cfg := config.Config{
 		Source: config.Resource{
-			URI:     os.TempDir()+"/dump.rump",
+			URI:     os.TempDir() + "/dump.rump",
 			IsRedis: false,
 		},
 		Target: config.Resource{

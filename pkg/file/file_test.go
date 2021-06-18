@@ -60,7 +60,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestWriteRead(t *testing.T) {
-	ctx:=context.Background()
+	ctx := context.Background()
 	// Read all keys from db1, push to shared message bus
 	source := redis.New(db1, ch, false, false)
 	if err := source.Read(ctx); err != nil {
@@ -92,8 +92,8 @@ func TestWriteRead(t *testing.T) {
 	// Get all db2 keys
 	result := map[string]string{}
 	for k := range expected {
-		res, err:=db2.Get(ctx, k).Result()
-		if err!=nil {
+		res, err := db2.Get(ctx, k).Result()
+		if err != nil {
 
 			t.Errorf("Error getting for key %s %s", k, err)
 		}

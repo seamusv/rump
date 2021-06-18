@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"unicode"
 
 	"github.com/domwong/rump/pkg/message"
 )
@@ -66,63 +65,60 @@ func (f *File) Read(ctx context.Context) error {
 		return err
 	}
 	defer d.Close()
-	rdr:= bufio.NewReader(d)
+	rdr := bufio.NewReader(d)
 
 	// Scan line by line
 	// file protocol is key✝✝value✝✝ttl✝✝
-	for  {
+	for {
 
-		scan:=func () (string, error){
-			var currentBuf string
-			lastRead:=false
+		scan := func() (string, error) {
+			builder:=strings.Builder{}
 			for {
-				r, _, err:=rdr.ReadRune()
-				if r == unicode.ReplacementChar {
-					fmt.Println("discard")
-					continue
-				}
-				if err!=nil {
+				b, err := rdr.Peek(4096)
+				if (err != nil && err != io.EOF) || (b == nil || len(b) == 0) {
 					return "", err
 				}
-				if lastRead && r=='✝' {
+
+				// special cases
+				// if currentBuf ends with ✝ and b starts with ✝
+				peeked := string(b)
+				if strings.HasPrefix(peeked,"✝") && strings.HasSuffix(builder.String(), "✝"){
+					// found it
+					rdr.Discard(3)
+					return strings.TrimSuffix(builder.String(), "✝"), nil
+				}
+
+				if idx:=strings.Index(peeked, "✝✝"); idx > -1 {
+					rdr.Discard(idx  + 6)
+					builder.WriteString(peeked[:idx])
 					break
 				}
-				if r == '✝' {
-					lastRead =true
-				} else{
-					lastRead = false
-				}
-
-				currentBuf += string(r)
-				if len(currentBuf)%100 == 0 {
-					fmt.Printf(".")
-				}
+				builder.WriteString(peeked)
+				rdr.Discard(4096)
 			}
-			// length of ✝ is 3 so take that off
-			return currentBuf[:len(currentBuf)-3], nil
+			return builder.String(), nil
 		}
 
-		key, err:= scan()
-		fmt.Printf("Key %s\n", key)
-		if err!=nil {
-			if err==io.EOF {
+		key, err := scan()
+		if err != nil {
+			if err == io.EOF {
 				break
 			}
 			return err
 		}
-		value, err:=scan()
-		if err!=nil {
+		value, err := scan()
+		if err != nil {
 			return err
 		}
-		ttl, err:=scan()
-		if err!=nil {
+		ttl, err := scan()
+		if err != nil {
 			return err
 		}
 
 		select {
 		case <-ctx.Done():
 			fmt.Println("")
-			fmt.Println("file read: exit "+ctx.Err().Error())
+			fmt.Println("file read: exit " + ctx.Err().Error())
 			return ctx.Err()
 		case f.Bus <- message.Payload{Key: key, Value: value, TTL: ttl}:
 			f.maybeLog("r")
