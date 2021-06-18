@@ -72,7 +72,7 @@ func (f *File) Read(ctx context.Context) error {
 	for {
 
 		scan := func() (string, error) {
-			builder:=strings.Builder{}
+			builder := strings.Builder{}
 			for {
 				b, err := rdr.Peek(4096)
 				if (err != nil && err != io.EOF) || (b == nil || len(b) == 0) {
@@ -82,14 +82,14 @@ func (f *File) Read(ctx context.Context) error {
 				// special cases
 				// if currentBuf ends with ✝ and b starts with ✝
 				peeked := string(b)
-				if strings.HasPrefix(peeked,"✝") && strings.HasSuffix(builder.String(), "✝"){
+				if strings.HasPrefix(peeked, "✝") && strings.HasSuffix(builder.String(), "✝") {
 					// found it
 					rdr.Discard(3)
 					return strings.TrimSuffix(builder.String(), "✝"), nil
 				}
 
-				if idx:=strings.Index(peeked, "✝✝"); idx > -1 {
-					rdr.Discard(idx  + 6)
+				if idx := strings.Index(peeked, "✝✝"); idx > -1 {
+					rdr.Discard(idx + 6)
 					builder.WriteString(peeked[:idx])
 					break
 				}

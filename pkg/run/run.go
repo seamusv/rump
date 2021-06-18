@@ -43,7 +43,15 @@ func Run(cfg config.Config) {
 		if err != nil {
 			exit(err)
 		}
-		opts.ReadTimeout = 60 * time.Second
+		if t := os.Getenv("RUMP_READ_TIMEOUT"); len(t) > 0 {
+			d, err := time.ParseDuration(t)
+			if err != nil {
+				exit(err)
+			}
+			opts.ReadTimeout = d
+		} else {
+			opts.ReadTimeout = 60 * time.Second
+		}
 
 		c := rredis.NewClient(opts)
 
