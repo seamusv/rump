@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package message;
+
+message Payload {
+    string key = 1;
+    string value = 2;
+    string ttl = 3;
+}

@@ -1,16 +1,13 @@
-// Package file allows reading/writing from/to a Rump file.
-// Rump file protocol is key✝✝value✝✝ttl✝✝key✝✝value✝✝ttl✝✝...
 package file
 
 import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/domwong/rump/pkg/message"
+	gogoio "github.com/gogo/protobuf/io"
 	"io"
 	"os"
-	"strings"
-
-	"github.com/domwong/rump/pkg/message"
 )
 
 // File can read and write, to a file Path, using the message Bus.
@@ -19,23 +16,6 @@ type File struct {
 	Bus    message.Bus
 	Silent bool
 	TTL    bool
-}
-
-// splitCross is a double-cross (✝✝) custom Scanner Split.
-func splitCross(data []byte, atEOF bool) (advance int, token []byte, err error) {
-
-	// end of file
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-
-	// Split at separator
-	if i := strings.Index(string(data), "✝✝"); i >= 0 {
-		// Separator is 6 bytes long
-		return i + 6, data[0:i], nil
-	}
-
-	return 0, nil, nil
 }
 
 // New creates the File struct, to be used for reading/writing.
@@ -65,53 +45,16 @@ func (f *File) Read(ctx context.Context) error {
 		return err
 	}
 	defer d.Close()
-	rdr := bufio.NewReader(d)
 
-	// Scan line by line
-	// file protocol is key✝✝value✝✝ttl✝✝
+	fmt.Println(f.Path)
+	prdr := gogoio.NewDelimitedReader(d, 1024*1024*600)
+
 	for {
-
-		scan := func() (string, error) {
-			builder := strings.Builder{}
-			for {
-				b, err := rdr.Peek(4096)
-				if (err != nil && err != io.EOF) || (b == nil || len(b) == 0) {
-					return "", err
-				}
-
-				// special cases
-				// if currentBuf ends with ✝ and b starts with ✝
-				peeked := string(b)
-				if strings.HasPrefix(peeked, "✝") && strings.HasSuffix(builder.String(), "✝") {
-					// found it
-					rdr.Discard(3)
-					return strings.TrimSuffix(builder.String(), "✝"), nil
-				}
-
-				if idx := strings.Index(peeked, "✝✝"); idx > -1 {
-					rdr.Discard(idx + 6)
-					builder.WriteString(peeked[:idx])
-					break
-				}
-				builder.WriteString(peeked)
-				rdr.Discard(4096)
-			}
-			return builder.String(), nil
-		}
-
-		key, err := scan()
-		if err != nil {
+		msg := &message.Payload{}
+		if err := prdr.ReadMsg(msg); err != nil {
 			if err == io.EOF {
 				break
 			}
-			return err
-		}
-		value, err := scan()
-		if err != nil {
-			return err
-		}
-		ttl, err := scan()
-		if err != nil {
 			return err
 		}
 
@@ -120,7 +63,7 @@ func (f *File) Read(ctx context.Context) error {
 			fmt.Println("")
 			fmt.Println("file read: exit " + ctx.Err().Error())
 			return ctx.Err()
-		case f.Bus <- message.Payload{Key: key, Value: value, TTL: ttl}:
+		case f.Bus <- *msg:
 			f.maybeLog("r")
 		}
 	}
@@ -138,6 +81,7 @@ func (f *File) Write(ctx context.Context) error {
 
 	// Buffered write to limit system IO calls
 	w := bufio.NewWriter(d)
+	wp := gogoio.NewDelimitedWriter(w)
 
 	// Flush last open buffers
 	defer w.Flush()
@@ -156,8 +100,7 @@ func (f *File) Write(ctx context.Context) error {
 				f.Bus = nil
 				continue
 			}
-			_, err := w.WriteString(p.Key + "✝✝" + p.Value + "✝✝" + p.TTL + "✝✝")
-			if err != nil {
+			if err := wp.WriteMsg(&p); err != nil {
 				return err
 			}
 			f.maybeLog("w")

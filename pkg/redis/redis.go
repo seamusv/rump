@@ -101,7 +101,7 @@ func (r *Redis) Read(ctx context.Context) error {
 				fmt.Println("")
 				fmt.Println("redis read: exit")
 				return ctx.Err()
-			case r.Bus <- message.Payload{Key: key, Value: value, TTL: ttl}:
+			case r.Bus <- message.Payload{Key: key, Value: value, Ttl: ttl}:
 				r.maybeLog("r")
 			}
 
@@ -131,7 +131,7 @@ func (r *Redis) Write(ctx context.Context) error {
 				r.Bus = nil
 				continue
 			}
-			ttl, _ := strconv.Atoi(p.TTL)
+			ttl, _ := strconv.Atoi(p.Ttl)
 			if ttl < 0 {
 				ttl = 0
 			}
